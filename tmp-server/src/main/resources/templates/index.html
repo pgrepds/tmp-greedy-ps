@@ -1,0 +1,281 @@
+<!DOCTYPE html SYSTEM "http://www.thymeleaf.org/dtd/xhtml1-strict-thymeleaf-spring4-4.dtd">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+    <head>
+        <meta charset="UTF-8">
+        <title>The Train Marshalling Problem</title>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css"/>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+        <script src="http://malsup.github.com/jquery.form.js"></script>
+
+        <style type="text/css">
+            #intervalGraph {
+                width: 1200px;
+                height: 700px;
+                border: 1px solid lightgray;
+            }
+
+            #resultGraph {
+                width: 1200px;
+                height: 700px;
+                border: 1px solid lightgray;
+            }
+
+            p {
+                max-width:1200px;
+            }
+
+            h4 {
+                margin-bottom:3px;
+            }
+        </style>
+    </head>
+    <body>
+
+        <h2>The Train Marshalling Problem</h2>
+        <h3>a greedy-type algorithm using pseudochains</h3>
+
+        <p>
+         A well-known optimization problem called the Train Marshalling Problem (TMP) deals with the rearrangement of cars of a train in a marshalling yard such that cars sharing the same destination appear successively in the outgoing train. A marshalling yard consists of one track for the incomming train, multiple parallel sorting tracks and an outgoing track for the final train. The objective is to minimize the number of sorting tracks.
+            <br>
+            <br>
+
+            The described problem can be modeled using interval graphs. An interval graph is an undirected graph whereby
+            each vertex represents an interval. Two vertices are adjacent to each other, when the corresponding intervals overlap.
+            Now, each vertex represents a destination in the train. The interval of that vertex has the first occurrence of a car
+            with that specific destination as a starting point and the last occurence as its end point.
+            For example: Let (1,2,2,3,1) be a train, then the interval [0, 4] is mapped to destination 1, [1,2] is mapped to
+            destination 2 and [3,3] is mapped to destination 3.
+            <br>
+            <br>
+
+            The above optimization problem can be tackled using a greedy-type algorithm, which decomposes the interval graph in
+            pseudostable sets. The concept of pseudostable sets (or pseudochains) was introduced by Jens Dörpinghaus.
+
+            <br>
+            <br>
+            One can upload a train in CSV-format (e.g.: 1,2,1,2,3,1,3,2). The real valued
+            integer number represents the cars destination. A train can also be added via the textfield.
+            One can also generate a random car sequence by pressing the "generate" button.
+
+            <br>
+            <br>
+            Pressing the "run"-button then starts the algorithm. The result is visualized as a graph. The blue edges
+            connect two stable sets with a vertex p, which is not part of any of the stable sets.
+
+            <br>
+            <br>
+            All cars in a stable set share the same track. The vertex, which connects two stable sets, represents a splittable destination.
+            The cars of the splittable destination appear on two sorting tracks. One of the two tracks must end
+            and the other one must start with a sequence of cars of that specific destination.
+            For example: Lets say we have a train with only three destinations (1,2 and 3) and cars with the destination 2 are splittable
+            according to 1 and 3. The result of the algorithm would form a pseudostable set containing two stable sets, connected by blue edges with
+            a vertex representing the cars of destination 2. The number of stable sets of a pseudostable sets is equal to the number of
+            sorting tracks needed.
+        </p>
+
+        <h4>Initialize the train</h4>
+        <form id="uploadID" method="POST" action="" enctype="multipart/form-data">
+            <div >
+                <input type="file" id="file" name="file" /><br><br>
+                <input type="button" class="button" value="Upload" id="uploadButton">
+            </div>
+        </form>
+
+        <h4>Data-Set (the train) (change the data while it's loaded and initialized):</h4>
+
+        <script type="text/javascript">
+            $(document).ready(function() {
+                $("#uploadButton").click(function() {
+                    var fd = new FormData();
+                    var files = $('#file')[0].files[0];
+                    fd.append('file', files);
+
+                    $.ajax({
+                        url: '/upload',
+                        type: 'post',
+                        data: fd,
+                        contentType: false,
+                        processData: false,
+                        success: function(response){
+                            if(response != 0){
+                               $.get("/data/train", function(data, status){
+                                   $('#trainEditField').val(data);
+                               });
+                            }
+                            else{
+                                alert('file not uploaded');
+                            }
+                        },
+                    });
+                });
+            });
+        </script>
+
+        <form method="POST" action="">
+            Train: <input type="text" name="Train" value="" size="180" id="trainEditField"><br><br>
+            <input type="button" class="button" value="Submit" id="editButton">
+            <input type="button" value="Generate Random" id="randomButton"> <br />
+        </form>
+
+        <script type="text/javascript">
+            $(document).ready(function() {
+                $("#editButton").click(function() {
+                    var fd = new FormData();
+                    var content = $('#trainEditField').val();
+                    fd.append('content', content);
+
+                    $.ajax({
+                        url: '/editTrain',
+                        type: 'post',
+                        data: fd,
+                        contentType: false,
+                        processData: false,
+                    });
+                });
+            });
+
+            $(document).ready(function() {
+                $("#randomButton").click(function() {
+                    $.get("/data/train/random", function(data, status){
+                        $('#trainEditField').val(data);
+                    });
+                });
+            });
+        </script>
+
+        <br><br>
+
+        <input type="button" value="Run" id="runButton"> <br />
+
+        <h4>Interval-Graph</h4>
+        <div id="intervalGraph"></div>
+        <h4>Result</h4>
+        <div id="resultGraph"></div>
+
+        <script type="text/javascript">
+
+            $("#runButton").click(function() {
+
+                $.get("/data/dot/graph", function(data, status){
+
+                    var DOTstring = 'dinetwork ' + data;
+                    var parsedData = vis.network.convertDot(DOTstring);
+
+                    var data = {
+                        nodes: parsedData.nodes,
+                        edges: parsedData.edges
+                    }
+
+                    var options = parsedData.options;
+
+                    // you can extend the options like a normal JSON variable:
+
+                    options.edges = {
+                        color: 'red'
+                    }
+
+                    // create a network
+                    var container = document.getElementById('intervalGraph');
+                    var network = new vis.Network(container, data, options);
+
+                    network.on("stabilizationIterationsDone", function (params) {
+                        network.stopSimulation();
+                    });
+                });
+
+                $.get("/data/dot/graph/ps", function(data, status){
+
+                    var DOTstring = 'dinetwork ' + data;
+                    var parsedData = vis.network.convertDot(DOTstring);
+                    var options = parsedData.options;
+
+                    var nodes = new vis.DataSet(parsedData.nodes);
+                    var edges = new vis.DataSet(parsedData.edges);
+
+                    var data = {
+                        nodes: nodes,
+                        edges: edges
+                    }
+
+                    // you can extend the options like a normal JSON variable:
+
+                    options.edges = {
+                        color: 'blue'
+                    }
+
+                     // create a network
+                     var container = document.getElementById('resultGraph');
+                     var network = new vis.Network(container, data, options);
+
+                     $.get("data/dot/graph/ps/independent", function(data, status){
+
+                        var independentSets = data;
+                        var i;
+                        var newX = 0;
+
+                        for (i = 0; i < independentSets.length; i++) {
+
+                            var DOTstring = 'dinetwork ' + independentSets[i];
+                            var parsedData = vis.network.convertDot(DOTstring);
+
+                            var z;
+                            var tempNodes = parsedData.nodes;
+
+                            var newY = 0;
+
+                            for (z = 0; z < tempNodes.length; z++) {
+
+                                var node = tempNodes[z];
+                                var fd = new FormData();
+                                fd.append('id', node.id);
+
+                                $.ajax({
+                                    url: '/data/dot/graph/connectedNodes',
+                                    type: 'get',
+                                    data: {'id': node.id},
+                                    contentType: false,
+                                    success: function(response) {
+
+                                        var responseDot = 'dinetwork ' + response;
+                                        var parsedResponse = vis.network.convertDot(responseDot);
+                                        var neighbors = parsedResponse.nodes;
+
+                                        if (neighbors.length != 0) {
+
+                                            var t;
+
+                                            for (t = 0; t < neighbors.length; t++) {
+
+                                                var neighbor = neighbors[t];
+                                                newY = -100;
+
+                                                nodes.update([{id:neighbor.id, fixed: {x: false, y: true},y:newY,x:node.x}]);
+                                            }
+                                        }
+                                    }
+                                });
+                                var tY = (z + 1) * 100;
+                                nodes.update([{id:node.id, fixed: {x: true, y: true},y:tY, x:newX}]);
+                            }
+
+                            newX = (i + 1) * 200;
+
+                            network.on("beforeDrawing", function (ctx) {
+                                var nodeId = 1;
+                                var nodePosition = network.getPositions([nodeId]);
+
+                               
+
+                                ctx.ellipse(100, 100, 10, 15, 0, 0, Math.PI*2);
+                                ctx.stroke();
+                            });
+                        }
+                    });
+                });
+            });
+        </script>
+    </body>
+</html>
